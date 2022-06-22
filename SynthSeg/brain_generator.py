@@ -209,7 +209,8 @@ class BrainGenerator:
             assert len(self.subjects_prob) == len(self.labels_paths), \
                 'subjects_prob should have the same length as labels_path, ' \
                 'had {} and {}'.format(len(self.subjects_prob), len(self.labels_paths))
-
+        else:
+            self.subjects_prob = subjects_prob
         # generation parameters
         self.labels_shape, self.aff, self.n_dims, _, self.header, self.atlas_res = \
             utils.get_volume_info(self.labels_paths[0], aff_ref=np.eye(4))
