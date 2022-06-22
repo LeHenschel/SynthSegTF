@@ -1,5 +1,7 @@
 name: synthSegTF
 dependencies:
+  - cudatoolkit=10.0
+  - cudnn=7.6.5
   - python>=3.6
   - anaconda
   - pip
