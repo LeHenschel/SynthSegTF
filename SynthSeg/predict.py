@@ -136,7 +136,7 @@ def predict(path_images,
     # prepare input/output filepaths
     path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, compute = \
         prepare_output_files(path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, recompute)
-
+    print("Frist", path_segmentations)
     # get label list
     segmentation_labels, _ = utils.get_list_labels(label_list=segmentation_labels)
     n_labels = len(segmentation_labels)
@@ -206,6 +206,7 @@ def predict(path_images,
 
             # write results to disk
             if path_segmentation is not None:
+                print("save", path_segmentation)
                 utils.save_volume(seg, aff, h, path_segmentation, dtype='int32')
             if path_posterior is not None:
                 if n_channels > 1:
@@ -273,23 +274,24 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
     # convert path to absolute paths
     path_images = os.path.abspath(path_images)
     basename = os.path.basename(path_images)
-    out_seg = os.path.abspath(out_seg) if (out_seg is not None) else out_seg
+    #out_seg = os.path.abspath(out_seg) if (out_seg is not None) else out_seg
     out_posteriors = os.path.abspath(out_posteriors) if (out_posteriors is not None) else out_posteriors
     out_resampled = os.path.abspath(out_resampled) if (out_resampled is not None) else out_resampled
     out_volumes = os.path.abspath(out_volumes) if (out_volumes is not None) else out_volumes
 
     # path_images is a folder
-    if ('.nii.gz' not in basename) & ('.nii' not in basename) & ('.mgz' not in basename) & ('.npz' not in basename):
-        if os.path.isfile(path_images):
+    if ('.nii.gz' not in basename) & ('.nii' not in basename) & ('.mgz' not in basename) & ('.npz' not in basename) :
+        print(basename, )
+        if os.path.isfile(path_images) and not basename[-2:] == "sv":
             raise Exception('Extension not supported for %s, only use: nii.gz, .nii, .mgz, or .npz' % path_images)
         path_images = utils.list_images_in_folder(path_images)
+        print(path_images)
         if (out_seg[-7:] == '.nii.gz') | (out_seg[-4:] == '.nii') | (out_seg[-4:] == '.mgz') | (out_seg[-4:] == '.npz'):
             raise Exception('Output folders cannot have extensions: .nii.gz, .nii, .mgz, or .npz, had %s' % out_seg)
-        utils.mkdir(out_seg)
-        out_seg = [os.path.join(out_seg, os.path.basename(image)).replace('.nii', '_synthseg.nii') for image in
-                   path_images]
-        out_seg = [seg_path.replace('.mgz', '_synthseg.mgz') for seg_path in out_seg]
-        out_seg = [seg_path.replace('.npz', '_synthseg.npz') for seg_path in out_seg]
+        #utils.mkdir(out_seg)
+        out_seg = [image.replace('mprage.nii.gz', 'mri/aseg.ValSet_SynthSeg_test.mgz') for image in path_images]
+        #out_seg = [seg_path.replace('.mgz', '_synthseg.mgz') for seg_path in out_seg]
+        #out_seg = [seg_path.replace('.npz', '_synthseg.npz') for seg_path in out_seg]
         recompute_seg = [not os.path.isfile(path_seg) for path_seg in out_seg]
         if out_posteriors is not None:
             if (out_posteriors[-7:] == '.nii.gz') | (out_posteriors[-4:] == '.nii') | \

@@ -69,11 +69,11 @@ tf.config.threading.set_intra_op_parallelism_threads(args['threads'])
 del args['threads']
 
 # default parameters
-args['segmentation_labels'] = os.path.join(synthseg_home, 'data/labels_classes_priors/segmentation_labels.npy')
-args['n_neutral_labels'] = 18
-args['segmentation_label_names'] = os.path.join(synthseg_home, 'data/labels_classes_priors/segmentation_names.npy')
-args['topology_classes'] = os.path.join(synthseg_home, 'data/labels_classes_priors/topological_classes.npy')
-args['path_model'] = os.path.join(synthseg_home, 'models/SynthSeg.h5')
+args['segmentation_labels'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/SegmentationLabels.npy" # os.path.join(synthseg_home, 'data/labels_classes_priors/segmentation_labels.npy')
+args['n_neutral_labels'] = 13
+args['segmentation_label_names'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/SegmentationNames.npy" #os.path.join(synthseg_home, 'data/labels_classes_priors/segmentation_names.npy')
+args['topology_classes'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/TopologicalClasses.npy" #os.path.join(synthseg_home, 'data/labels_classes_priors/topological_classes.npy')
+args['path_model'] = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_net1/dice_073.h5' #os.path.join(synthseg_home, 'models/SynthSeg.h5')
 args['padding'] = args['cropping']
 
 # call predict

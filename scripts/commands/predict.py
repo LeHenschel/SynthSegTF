@@ -15,16 +15,20 @@ License.
 
 
 # imports
+import os
+import sys
+sys.path.append("/autofs/vast/lzgroup/Users/LeonieHenschel")
+sys.path.append("/autofs/vast/lzgroup/Users/LeonieHenschel/SynthSegTF")
 from argparse import ArgumentParser
 from SynthSeg.predict import predict
 
 parser = ArgumentParser()
 
 # Positional arguments
-parser.add_argument("path_images", type=str, help="path single image or path of the folders with training labels")
-parser.add_argument("path_segmentations", type=str, help="segmentations folder/path")
-parser.add_argument("path_model", type=str, help="model file path")
-parser.add_argument("segmentation_labels", type=str, help="path label list")
+parser.add_argument("--path_images", type=str, help="path single image or path of the folders with training labels")
+parser.add_argument("--path_segmentations", type=str, help="segmentations folder/path")
+parser.add_argument("--path_model", type=str, help="model file path")
+parser.add_argument("--segmentation_labels", type=str, help="path label list")
 
 # Saving paths
 parser.add_argument("--post", type=str, dest="path_posteriors", default=None, help="posteriors folder/path")

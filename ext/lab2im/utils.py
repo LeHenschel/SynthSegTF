@@ -405,7 +405,7 @@ def list_images_in_folder(path_dir, include_single_image=True):
                                  glob.glob(os.path.join(path_dir, '*.npz')))
         elif os.path.isfile(path_dir):
             with open(path_dir, "r") as pfile:
-                list_images = [line.strip() + "/aseg.mgz" for line in pfile.readlines()]
+                list_images = [line.strip() + "/mprage.nii.gz" for line in pfile.readlines()]
         else:
             raise Exception('extension not supported for %s, only use: nii.gz, .nii, .mgz, or .npz' % path_dir)
         assert len(list_images) > 0, 'no .nii, .nii.gz, .mgz or .npz image could be found in %s' % path_dir
