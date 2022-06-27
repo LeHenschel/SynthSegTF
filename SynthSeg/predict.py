@@ -289,7 +289,7 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
         if (out_seg[-7:] == '.nii.gz') | (out_seg[-4:] == '.nii') | (out_seg[-4:] == '.mgz') | (out_seg[-4:] == '.npz'):
             raise Exception('Output folders cannot have extensions: .nii.gz, .nii, .mgz, or .npz, had %s' % out_seg)
         #utils.mkdir(out_seg)
-        out_seg = [image.replace('mprage.nii.gz', 'mri/aseg.ValSet_SynthSeg_test.mgz') for image in path_images]
+        out_seg = [image.replace('brainmask.mgz', 'mri/aseg.ValSet_SynthSeg_SkullStrip.mgz') for image in path_images]
         #out_seg = [seg_path.replace('.mgz', '_synthseg.mgz') for seg_path in out_seg]
         #out_seg = [seg_path.replace('.npz', '_synthseg.npz') for seg_path in out_seg]
         recompute_seg = [not os.path.isfile(path_seg) for path_seg in out_seg]
