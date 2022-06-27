@@ -27,17 +27,22 @@ import numpy as np
 
 
 def create_label_mappings(lut_synth_file, base="/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/",
-                          cols=["AllLabels", "SegmentationLabels", "GenerationClasses"]):
+                          cols=["AllLabels", "SegmentationLabels", "GenerationClasses", "SegmentationNames", "TopologicalClasses"]):
     separator = {"tsv": "\t", "csv": ",", "txt": " "}
     lut = pd.read_csv(lut_synth_file, sep=separator[lut_synth_file[-3:]])
     for col in cols:
-        np.save(base + col + ".npy", lut[col].values)
+        if col == "SegmentationNames":
+            data = lut[col].values.astype(dtype='<U32')
+        else:
+            data = lut[col].values
+        np.save(base + col + ".npy", data, allow_pickle=False)
 
 
 if __name__ == "__main__":
     # path training label maps
     path_training_label_maps = '/autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/data/dataset_split_training.csv'
-    path_model_dir = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_orig'
+    path_model_dir = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_net1/run2_models'
+    resume_ckpt = None #path_model_dir + '/dice_073.h5'
     batchsize = 1
 
     # architecture parameters
@@ -54,7 +59,7 @@ if __name__ == "__main__":
     lr = 1e-4               # learning rate
     lr_decay = 0            # learning rate decay (knowing that Adam already has its own internal decay)
     wl2_epochs = 1          # number of pre-training epochs with wl2 metric w.r.t. the layer before the softmax
-    dice_epochs = 1 #100       # number of training epochs; for FastSurferCNN = 400k steps, adopt here to same number
+    dice_epochs = 100       # number of training epochs; for FastSurferCNN = 400k steps, adopt here to same number
     steps_per_epoch = 4000  # number of iteration per epoch
 
 
@@ -64,7 +69,7 @@ if __name__ == "__main__":
     # ge    neration and segmentation labels
     # List of labels (first sided, second non-sided)
     path_generation_labels = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/AllLabels.npy'
-    n_neutral_labels = 18 # Non-sided labels
+    n_neutral_labels = 13 # Non-sided labels (this was wrongly set to 18?)
     # Labels we want to predict (equivalent to generation_labels here)
     path_segmentation_labels = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/SegmentationLabels.npy'
 
@@ -124,4 +129,5 @@ if __name__ == "__main__":
             lr_decay=lr_decay,
             wl2_epochs=wl2_epochs,
             dice_epochs=dice_epochs,
-            steps_per_epoch=steps_per_epoch)
+            steps_per_epoch=steps_per_epoch,
+             checkpoint=resume_ckpt)
