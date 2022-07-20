@@ -35,9 +35,9 @@ License.
 
 # python imports
 import numpy as np
-import tensorflow as tf
-import keras.backend as K
-from keras.layers import Layer
+import torch
+import torch.nn as nn
+from torch.nn.modules.loss import _Loss
 
 # project imports
 from . import utils
@@ -48,15 +48,18 @@ from ext.neuron import utils as nrn_utils
 import ext.neuron.layers as nrn_layers
 
 
-class RandomSpatialDeformation(Layer):
+class RandomSpatialDeformation(nn.Module):
 
-    """This layer spatially deforms one or several tensors with a combination of affine and elastic transformations.
+    """
+    This layer spatially deforms one or several tensors with a combination of affine and elastic transformations.
     The input tensors are expected to have the same shape [batchsize, shape_dim1, ..., shape_dimn, channel].
+
     The non linear deformation is obtained by:
     1) a small-size SVF is sampled from a centred normal distribution of random standard deviation.
     2) it is resized with trilinear interpolation to half the shape of the input tensor
     3) it is integrated to obtain a diffeomorphic transformation
     4) finally, it is resized (again with trilinear interpolation) to full image size
+
     :param scaling_bounds: (optional) range of the random scaling to apply. The scaling factor for each dimension is
     sampled from a uniform distribution of predefined bounds. Can either be:
     1) a number, in which case the scaling factor is independently sampled from the uniform distribution of bounds
@@ -90,8 +93,7 @@ class RandomSpatialDeformation(Layer):
                  enable_90_rotations=False,
                  nonlin_std=4.,
                  nonlin_shape_factor=.0625,
-                 inter_method='linear',
-                 **kwargs):
+                 inter_method='linear'):
 
         # shape attributes
         self.n_inputs = 1
@@ -117,10 +119,10 @@ class RandomSpatialDeformation(Layer):
         # interpolation methods
         self.inter_method = inter_method
 
-        super(RandomSpatialDeformation, self).__init__(**kwargs)
+        super(RandomSpatialDeformation, self).__init__()
 
     def get_config(self):
-        config = super().get_config()
+        config = {}
         config["scaling_bounds"] = self.scaling_bounds
         config["rotation_bounds"] = self.rotation_bounds
         config["shearing_bounds"] = self.shearing_bounds
@@ -149,19 +151,16 @@ class RandomSpatialDeformation(Layer):
 
         self.inter_method = utils.reformat_to_list(self.inter_method, length=self.n_inputs, dtype='str')
 
-        self.built = True
-        super(RandomSpatialDeformation, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs):
 
         # reformat inputs and get its shape
         if self.n_inputs < 2:
             inputs = [inputs]
         types = [v.dtype for v in inputs]
-        inputs = [tf.cast(v, dtype='float32') for v in inputs]
-        batchsize = tf.split(tf.shape(inputs[0]), [1, self.n_dims + 1])[0]
+        inputs = [v.type(torch.float32) for v in inputs]
+        batchsize = torch.split(inputs[0].shape, [1, self.n_dims + 1])[0]
 
-        # initialise list of transfors to operate
+        # initialise list of transforms to operate
         list_trans = list()
 
         # add affine deformation to inputs list
@@ -179,9 +178,9 @@ class RandomSpatialDeformation(Layer):
         if self.apply_elastic_trans:
 
             # sample small field from normal distribution of specified std dev
-            trans_shape = tf.concat([batchsize, tf.convert_to_tensor(self.small_shape, dtype='int32')], axis=0)
-            trans_std = tf.random.uniform((1, 1), maxval=self.nonlin_std)
-            elastic_trans = tf.random.normal(trans_shape, stddev=trans_std)
+            trans_shape = torch.concat([batchsize, self.small_shape.type(torch.int32)], dim=0)
+            trans_std = torch.distributions.uniform.Uniform(0, self.nonlin_std).sample((1, 1))
+            elastic_trans = torch.randn(trans_shape) * trans_std
 
             # reshape this field to half size (for smoother SVF), integrate it, and reshape to full image size
             resize_shape = [max(int(self.inshape[i] / 2), self.small_shape[i]) for i in range(self.n_dims)]
@@ -196,7 +195,7 @@ class RandomSpatialDeformation(Layer):
         return [tf.cast(v, t) for (t, v) in zip(types, inputs)]
 
 
-class RandomCrop(Layer):
+class RandomCrop(nn.Module):
 
     """Randomly crop all input tensors to a given shape. This cropping is applied to all channels.
     The input tensors are expected to have shape [batchsize, shape_dim1, ..., shape_dimn, channel].
@@ -260,7 +259,7 @@ class RandomCrop(Layer):
         return output_shape if self.several_inputs else output_shape[0]
 
 
-class RandomFlip(Layer):
+class RandomFlip(nn.Module):
 
     """This function flips the input tensors along the specified axes with a probability of 0.5.
     The input tensors are expected to have shape [batchsize, shape_dim1, ..., shape_dimn, channel].
@@ -403,7 +402,7 @@ class RandomFlip(Layer):
         return K.switch(inputs[1], K.reverse(inputs[0], axes=flip_axis), inputs[0])
 
 
-class SampleConditionalGMM(Layer):
+class SampleConditionalGMM(nn.Module):
     """This layer generates an image by sampling a Gaussian Mixture Model conditioned on a label map given as input.
     The parameters of the GMM are given as two additional inputs to the layer (means and standard deviations):
     image = SampleConditionalGMM(generation_labels)([label_map, means, stds])
@@ -477,7 +476,7 @@ class SampleConditionalGMM(Layer):
         return input_shape[0] if (self.n_channels == 1) else tuple(list(input_shape[0][:-1]) + [self.n_channels])
 
 
-class SampleResolution(Layer):
+class SampleResolution(nn.Module):
     """Build a random resolution tensor by sampling a uniform distribution of provided range.
 
     You can use this layer in the following ways:
@@ -628,7 +627,7 @@ class SampleResolution(Layer):
             return (None, self.n_dims) if self.add_batchsize else self.n_dims
 
 
-class GaussianBlur(Layer):
+class GaussianBlur(nn.Module):
     """Applies gaussian blur to an input image.
     The input image is expected to have shape [batchsize, shape_dim1, ..., shape_dimn, channel].
     :param sigma: standard deviation of the blurring kernels to apply. Can be a number, a list of length n_dims, or
@@ -743,7 +742,7 @@ class GaussianBlur(Layer):
         return image
 
 
-class ImageGradients(Layer):
+class ImageGradients(nn.Module):
 
     def __init__(self, gradient_type='sobel', return_magnitude=False, **kwargs):
 
@@ -844,7 +843,7 @@ class ImageGradients(Layer):
         return tuple(input_shape)
 
 
-class DynamicGaussianBlur(Layer):
+class DynamicGaussianBlur(nn.Module):
     """Applies gaussian blur to an input image, where the standard deviation of the blurring kernel is provided as a
     layer input, which enables to perform dynamic blurring (i.e. the blurring kernel can vary at each minibatch).
     :param max_sigma: maximum value of the standard deviation that will be provided as input. This is used to compute
@@ -909,7 +908,7 @@ class DynamicGaussianBlur(Layer):
         return output
 
 
-class MimicAcquisition(Layer):
+class MimicAcquisition(nn.Module):
     """
     Layer that takes an image as input, and simulates data that has been acquired at low resolution.
     The output is obtained by resampling the input twice:
@@ -1066,7 +1065,7 @@ class MimicAcquisition(Layer):
         return [output_shape] * 2 if self.build_dist_map else output_shape
 
 
-class BiasFieldCorruption(Layer):
+class BiasFieldCorruption(nn.Module):
     """This layer applies a smooth random bias field to the input by applying the following steps:
     1) we first sample a value for the standard deviation of a centred normal distribution
     2) a small-size SVF is sampled from this normal distribution
@@ -1153,7 +1152,7 @@ class BiasFieldCorruption(Layer):
             return inputs
 
 
-class IntensityAugmentation(Layer):
+class IntensityAugmentation(nn.Module):
     """This layer enables to augment the intensities of the input tensor, as well as to apply min_max normalisation.
     The following steps are applied (all are optional):
     1) white noise corruption, with a randomly sampled std dev.
@@ -1285,45 +1284,39 @@ class IntensityAugmentation(Layer):
         return inputs
 
 
-class DiceLoss(Layer):
+class DiceLoss(_Loss):
     """This layer computes the Dice loss between two tensors. These tensors are expected to 1) have the same shape, and
     2) be probabilistic, i.e. they must have the same shape [batchsize, size_dim1, ..., size_dimN, n_labels] where
     n_labels is the number of labels for which we compute the Dice loss."""
 
     def __init__(self, enable_checks=True, **kwargs):
         self.inshape = None
+        self.eps = 0.001
         self.enable_checks = enable_checks
         super(DiceLoss, self).__init__(**kwargs)
 
-    def build(self, input_shape):
-        assert len(input_shape) == 2, 'DiceLoss expects 2 inputs to compute the Dice loss.'
-        assert input_shape[0] == input_shape[1], 'the two inputs must have the same shape.'
-        self.inshape = input_shape[0][1:]
-        self.built = True
-        super(DiceLoss, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs):
+        assert len(inputs) == 2, 'DiceLoss expects 2 inputs to compute the Dice loss.'
+        assert inputs[0].shape == inputs[1].shape, 'the two inputs must have the same shape.'
 
         # make sure tensors are probabilistic
         x = inputs[0]
         y = inputs[1]
         if self.enable_checks:  # disabling is useful to, e.g., use incomplete label maps
-            x = K.clip(x / tf.math.reduce_sum(x, axis=-1, keepdims=True), 0, 1)
-            y = K.clip(y / tf.math.reduce_sum(y, axis=-1, keepdims=True), 0, 1)
+            x = torch.clip(x / x.sum(-1), 0, 1)
+            y = torch.clip(y / y.sum(-1), 0, 1)
 
         # compute dice loss for each label
-        top = tf.math.reduce_sum(2 * x * y, axis=list(range(1, len(self.inshape))))
-        bottom = tf.math.square(x) + tf.math.square(y) + tf.keras.backend.epsilon()
-        bottom = tf.math.reduce_sum(bottom, axis=list(range(1, len(self.inshape))))
-        last_tensor = top / bottom
+        intersection = x * y
+        union = x + y
+        top = 2 * intersection.sum(tuple(range(2, intersection.ndim)))
+        bottom = union.sum(tuple(range(2, union.ndim))) + self.eps
+        last_tensor = 1 - (top / bottom)
 
-        return K.mean(1 - last_tensor)
-
-    def compute_output_shape(self, input_shape):
-        return [[]]
+        return last_tensor.sum()
 
 
-class WeightedL2Loss(Layer):
+class WeightedL2Loss(_Loss):
     """This layer computes a L2 loss weighted by a specified factor between two tensors.
     These tensors are expected to have the same shape [batchsize, size_dim1, ..., size_dimN, n_labels]
     where n_labels is the number of labels for which we compute the loss.
@@ -1335,30 +1328,17 @@ class WeightedL2Loss(Layer):
         self.n_labels = None
         super(WeightedL2Loss, self).__init__(**kwargs)
 
-    def get_config(self):
-        config = super().get_config()
-        config["target_value"] = self.target_value
-        config["background_weight"] = self.background_weight
-        return config
+    def forward(self, inputs):
+        assert len(inputs) == 2, 'DiceLoss expects 2 inputs to compute the Dice loss.'
+        assert inputs[0].shape == inputs[1].shape, 'the two inputs must have the same shape.'
 
-    def build(self, input_shape):
-        assert len(input_shape) == 2, 'DiceLoss expects 2 inputs to compute the Dice loss.'
-        assert input_shape[0] == input_shape[1], 'the two inputs must have the same shape.'
-        self.n_labels = input_shape[0][-1]
-        self.built = True
-        super(WeightedL2Loss, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
         gt = inputs[0]
         pred = inputs[1]
-        weights = tf.expand_dims(1 - gt[..., 0] + self.background_weight, -1)
-        return K.sum(weights * K.square(pred - self.target_value * (2 * gt - 1))) / (K.sum(weights) * self.n_labels)
-
-    def compute_output_shape(self, input_shape):
-        return [[]]
+        weights = torch.unsqueeze(1 - gt[..., 0] + self.background_weight, dim=-1)
+        return torch.sum(weights * torch.square(pred - self.target_value * (2 * gt - 1))) / (torch.sum(weights) * gt.shape[-1])
 
 
-class ResetValuesToZero(Layer):
+class ResetValuesToZero(nn.Module):
     """This layer enables to reset given values to 0 within the input tensors.
 
     :param values: list of values to be reset to 0.
@@ -1376,29 +1356,18 @@ class ResetValuesToZero(Layer):
 
     def __init__(self, values, **kwargs):
         assert values is not None, 'please provide correct list of values, received None'
-        self.values = utils.reformat_to_list(values)
-        self.values_tens = None
+        self.values = torch.as_tensor(utils.reformat_to_list(values))
         self.n_values = len(values)
         super(ResetValuesToZero, self).__init__(**kwargs)
 
-    def get_config(self):
-        config = super().get_config()
-        config["values"] = self.values
-        return config
-
-    def build(self, input_shape):
-        self.values_tens = tf.convert_to_tensor(self.values)
-        self.built = True
-        super(ResetValuesToZero, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
-        values = tf.cast(self.values_tens, dtype=inputs.dtype)
-        for i in range(self.n_values):
-            inputs = tf.where(tf.equal(inputs, values[i]), tf.zeros_like(inputs), inputs)
+    def forward(self, inputs):
+        values = self.values.type_as(inputs)
+        mask = torch.isin(inputs, values)
+        inputs[mask] = 0
         return inputs
 
 
-class ConvertLabels(Layer):
+class ConvertLabels(nn.Module):
     """Convert all labels in a tensor by the corresponding given set of values.
     labels_converted = ConvertLabels(source_values, dest_values)(labels).
     labels must be an int32 tensor, and labels_converted will also be int32.
