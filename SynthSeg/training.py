@@ -16,12 +16,8 @@ License.
 
 # python imports
 import os
-import keras
 import numpy as np
-import tensorflow as tf
-from keras import models
-import keras.callbacks as KC
-from keras.optimizers import Adam
+import torch
 from inspect import getmembers, isclass
 
 # project imports
