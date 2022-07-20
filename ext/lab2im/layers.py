@@ -1502,7 +1502,6 @@ class MaskEdges(nn.Module):
     def forward(self, inputs):
 
         # build mask
-        mask = torch.ones_like(inputs)
         for i, axis in enumerate(self.axes):
 
             # select restricting indices
@@ -1513,17 +1512,13 @@ class MaskEdges(nn.Module):
                                                                    ).sample([1]))
             idx2 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[2] * inputs.shape[axis],
                                                                    axis_boundaries[3] * inputs.shape[axis]
-                                                                   ).sample([1]) - idx1)
-
-            idx3 = inputs.shape[axis] - idx1 - idx2
-            split_idx = torch.concat([idx1, idx2, idx3], dim=0).to(torch.long)
+                                                                   ).sample([1]))
 
             # update mask
-            split_list = torch.tensor_split(inputs, split_idx, dim=axis)
-            tmp_mask = torch.concat([torch.zeros_like(split_list[0]),
-                                     torch.ones_like(split_list[1]),
-                                     torch.zeros_like(split_list[2])], dim=axis)
-            mask = mask * tmp_mask
+            split_list = torch.tensor_split(inputs, torch.concat([idx1, idx2]).to(torch.long), dim=axis)
+            mask = torch.concat([torch.zeros_like(split_list[0]),
+                                 torch.ones_like(split_list[1]),
+                                 torch.zeros_like(split_list[2])], dim=axis)
 
         # mask second_channel
         if torch.greater(torch.distributions.uniform.Uniform(0, 1).sample([1]), 1 - self.prob_mask):
