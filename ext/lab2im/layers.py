@@ -1388,7 +1388,7 @@ class ConvertLabels(nn.Module):
         return tf.gather(self.lut, tf.cast(inputs, dtype='int32'))
 
 
-class PadAroundCentre(Layer):
+class PadAroundCentre(nn.Module):
     """Pad the input tensor to the specified shape with the given value.
     The input tensor is expected to have shape [batchsize, shape_dim1, ..., shape_dimn, channel].
     :param pad_margin: margin to use for padding. The tensor will be padded by the provided margin on each side.
@@ -1403,18 +1403,15 @@ class PadAroundCentre(Layer):
     def __init__(self, pad_margin=None, pad_shape=None, value=0, **kwargs):
         self.pad_margin = pad_margin
         self.pad_shape = pad_shape
+
+        if self.pad_margin is not None:
+            assert self.pad_shape is None, 'please do not provide a padding shape and margin at the same time.'
+
         self.value = value
         self.pad_margin_tens = None
         self.pad_shape_tens = None
         self.n_dims = None
         super(PadAroundCentre, self).__init__(**kwargs)
-
-    def get_config(self):
-        config = super().get_config()
-        config["pad_margin"] = self.pad_margin
-        config["pad_shape"] = self.pad_shape
-        config["value"] = self.value
-        return config
 
     def build(self, input_shape):
         # input shape
@@ -1449,8 +1446,12 @@ class PadAroundCentre(Layer):
         self.built = True
         super(PadAroundCentre, self).build(input_shape)
 
-    def call(self, inputs, **kwargs):
-        return tf.pad(inputs, self.pad_margin_tens, mode='CONSTANT', constant_values=self.value)
+    def forward(self, inputs):
+        n_dims = len(inputs.shape) - 2
+        if self.pad_margin is not None:
+            pad = np.transpose(np.array([[0] + utils.reformat_to_list(self.pad_margin, n_dims) + [0]] * 2))
+
+        return torch.pad(inputs, pad, mode='CONSTANT', constant_values=self.value)
 
 
 class MaskEdges(nn.Module):
