@@ -1557,15 +1557,15 @@ class MaskEdges(nn.Module):
             # select restricting indices
             axis_boundaries = self.boundaries[i, :]
 
-            idx1 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[0] * self.inputshape[axis],
-                                                                   axis_boundaries[1] * self.inputshape[axis]
+            idx1 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[0] * inputs.shape[axis],
+                                                                   axis_boundaries[1] * inputs.shape[axis]
                                                                    ).sample([1]))
-            idx2 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[2] * self.inputshape[axis],
-                                                                   axis_boundaries[3] * self.inputshape[axis] - 1
+            idx2 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[2] * inputs.shape[axis],
+                                                                   axis_boundaries[3] * inputs.shape[axis]
                                                                    ).sample([1]) - idx1)
 
-            idx3 = self.inputshape[axis] - idx1 - idx2
-            split_idx = torch.concat([idx1, idx2, idx3], dim=0).to(torch.int32)
+            idx3 = inputs.shape[axis] - idx1 - idx2
+            split_idx = torch.concat([idx1, idx2, idx3], dim=0).to(torch.long)
 
             # update mask
             split_list = torch.tensor_split(inputs, split_idx, dim=axis)
