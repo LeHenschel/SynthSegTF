@@ -310,7 +310,7 @@ class BrainGenerator:
                                                 bias_field_std=self.bias_field_std,
                                                 bias_shape_factor=self.bias_shape_factor,
                                                 return_gradients=self.return_gradients)
-        out_shape = lab_to_im_model.output[0].get_shape().as_list()[1:]
+        out_shape = lab_to_im_model.output[0].shape[1:]
         return lab_to_im_model, out_shape
 
     def _build_model_inputs_generator(self, mix_prior_and_random):
