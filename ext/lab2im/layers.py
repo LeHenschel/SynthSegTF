@@ -121,18 +121,6 @@ class RandomSpatialDeformation(nn.Module):
 
         super(RandomSpatialDeformation, self).__init__()
 
-    def get_config(self):
-        config = {}
-        config["scaling_bounds"] = self.scaling_bounds
-        config["rotation_bounds"] = self.rotation_bounds
-        config["shearing_bounds"] = self.shearing_bounds
-        config["translation_bounds"] = self.translation_bounds
-        config["enable_90_rotations"] = self.enable_90_rotations
-        config["nonlin_std"] = self.nonlin_std
-        config["nonlin_shape_factor"] = self.nonlin_shape_factor
-        config["inter_method"] = self.inter_method
-        return config
-
     def build(self, input_shape):
 
         if not isinstance(input_shape, list):
@@ -1465,7 +1453,7 @@ class PadAroundCentre(Layer):
         return tf.pad(inputs, self.pad_margin_tens, mode='CONSTANT', constant_values=self.value)
 
 
-class MaskEdges(Layer):
+class MaskEdges(nn.Module):
     """Reset the edges of a tensor to zero (i.e. with bands of zeros along the specified axes).
     The width of the zero-band is randomly drawn from a uniform distribution, whose range is given in boundaries.
 
@@ -1473,7 +1461,7 @@ class MaskEdges(Layer):
     :param boundaries: numpy array of shape (len(axes), 4). Each row contains the two bounds of the uniform
     distributions from which we draw the width of the zero-bands on each side.
     Those bounds must be expressed in relative side (i.e. between 0 and 1).
-    :return: a tensor of the same shape as the input, with bands of zeros along the pecified axes.
+    :return: a tensor of the same shape as the input, with bands of zeros along the specified axes.
 
     example:
     tensor=tf.constant([[[[1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
@@ -1505,55 +1493,41 @@ class MaskEdges(Layer):
           [0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]]]])  # shape = [1,10,10,1]
     """
 
-    def __init__(self, axes, boundaries, prob_mask=1, **kwargs):
+    def __init__(self, axes, boundaries, prob_mask=1):
         self.axes = utils.reformat_to_list(axes, dtype='int')
         self.boundaries = utils.reformat_to_n_channels_array(boundaries, n_dims=4, n_channels=len(self.axes))
         self.prob_mask = prob_mask
-        self.inputshape = None
-        super(MaskEdges, self).__init__(**kwargs)
+        super(MaskEdges, self).__init__()
 
-    def get_config(self):
-        config = super().get_config()
-        config["axes"] = self.axes
-        config["boundaries"] = self.boundaries
-        config["prob_mask"] = self.prob_mask
-        return config
-
-    def build(self, input_shape):
-        self.inputshape = input_shape
-        self.built = True
-        super(MaskEdges, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs):
 
         # build mask
-        mask = tf.ones_like(inputs)
+        mask = torch.ones_like(inputs)
         for i, axis in enumerate(self.axes):
 
             # select restricting indices
             axis_boundaries = self.boundaries[i, :]
-            idx1 = tf.math.round(tf.random.uniform([1],
-                                                   minval=axis_boundaries[0] * self.inputshape[axis],
-                                                   maxval=axis_boundaries[1] * self.inputshape[axis]))
-            idx2 = tf.math.round(tf.random.uniform([1],
-                                                   minval=axis_boundaries[2] * self.inputshape[axis],
-                                                   maxval=axis_boundaries[3] * self.inputshape[axis] - 1) - idx1)
+
+            idx1 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[0] * self.inputshape[axis],
+                                                                   axis_boundaries[1] * self.inputshape[axis]
+                                                                   ).sample([1]))
+            idx2 = torch.round(torch.distributions.uniform.Uniform(axis_boundaries[2] * self.inputshape[axis],
+                                                                   axis_boundaries[3] * self.inputshape[axis] - 1
+                                                                   ).sample([1]) - idx1)
+
             idx3 = self.inputshape[axis] - idx1 - idx2
-            split_idx = tf.cast(tf.concat([idx1, idx2, idx3], axis=0), dtype='int32')
+            split_idx = torch.concat([idx1, idx2, idx3], dim=0).to(torch.int32)
 
             # update mask
-            split_list = tf.split(inputs, split_idx, axis=axis)
-            tmp_mask = tf.concat([tf.zeros_like(split_list[0]),
-                                  tf.ones_like(split_list[1]),
-                                  tf.zeros_like(split_list[2])], axis=axis)
+            split_list = torch.tensor_split(inputs, split_idx, dim=axis)
+            tmp_mask = torch.concat([torch.zeros_like(split_list[0]),
+                                     torch.ones_like(split_list[1]),
+                                     torch.zeros_like(split_list[2])], dim=axis)
             mask = mask * tmp_mask
 
         # mask second_channel
-        tensor = K.switch(tf.squeeze(K.greater(tf.random.uniform([1], 0, 1), 1 - self.prob_mask)),
-                          inputs * mask,
-                          inputs)
+        if torch.greater(torch.distributions.uniform.Uniform(0, 1).sample([1]), 1 - self.prob_mask):
+            inputs *= mask
 
-        return [tensor, mask]
+        return [inputs, mask]
 
-    def compute_output_shape(self, input_shape):
-        return [input_shape] * 2
