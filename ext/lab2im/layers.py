@@ -1389,69 +1389,57 @@ class ConvertLabels(nn.Module):
 
 
 class PadAroundCentre(nn.Module):
-    """Pad the input tensor to the specified shape with the given value.
+    """
+    Pad the input tensor to the specified shape with the given value.
     The input tensor is expected to have shape [batchsize, shape_dim1, ..., shape_dimn, channel].
     :param pad_margin: margin to use for padding. The tensor will be padded by the provided margin on each side.
     Can either be a number (all axes padded with the same margin), or a  list/numpy array of length n_dims.
     example: if tensor is of shape [batch, x, y, z, n_channels] and margin=10, then the padded tensor will be of
-    shape [batch, x+2*10, y+2*10, z+2*10, n_channels].
+    shape [batch, n_channels, x+2*10, y+2*10, z+2*10].
     :param pad_shape: shape to pad the tensor to. Can either be a number (all axes padded to the same shape), or a
     list/numpy array of length n_dims.
     :param value: value to pad the tensors with. Default is 0.
     """
 
-    def __init__(self, pad_margin=None, pad_shape=None, value=0, **kwargs):
-        self.pad_margin = pad_margin
-        self.pad_shape = pad_shape
+    def __init__(self, pad_margin=None, pad_shape=None, value=0, ndim=3):
+        assert pad_margin is not None or pad_shape is not None, 'Provide either padding shape or padding margin'
+        if pad_margin is not None:
+            assert pad_shape is None, 'Please do not provide a padding shape and margin at the same time.'
 
-        if self.pad_margin is not None:
-            assert self.pad_shape is None, 'please do not provide a padding shape and margin at the same time.'
-
-        self.value = value
-        self.pad_margin_tens = None
-        self.pad_shape_tens = None
-        self.n_dims = None
-        super(PadAroundCentre, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # input shape
-        self.n_dims = len(input_shape) - 2
-        input_shape[0] = 0
-        input_shape[0 - 1] = 0
-
-        if self.pad_margin is not None:
-            assert self.pad_shape is None, 'please do not provide a padding shape and margin at the same time.'
-
-            # reformat padding margins
-            pad = np.transpose(np.array([[0] + utils.reformat_to_list(self.pad_margin, self.n_dims) + [0]] * 2))
-            self.pad_margin_tens = tf.convert_to_tensor(pad, dtype='int32')
-
-        elif self.pad_shape is not None:
-            assert self.pad_margin is None, 'please do not provide a padding shape and margin at the same time.'
-
-            # pad shape
-            tensor_shape = tf.cast(tf.convert_to_tensor(input_shape), 'int32')
-            self.pad_shape_tens = np.array([0] + utils.reformat_to_list(self.pad_shape, length=self.n_dims) + [0])
-            self.pad_shape_tens = tf.convert_to_tensor(self.pad_shape_tens, dtype='int32')
-            self.pad_shape_tens = tf.math.maximum(tensor_shape, self.pad_shape_tens)
-
-            # padding margin
-            min_margins = (self.pad_shape_tens - tensor_shape) / 2
-            max_margins = self.pad_shape_tens - tensor_shape - min_margins
-            self.pad_margin_tens = tf.stack([min_margins, max_margins], axis=-1)
-
+        if pad_margin is not None:
+            self.pad = self.prepare_pad_from_margins(pad_margin, ndim)
         else:
-            raise Exception('please either provide a padding shape or a padding margin.')
+            self.pad_shape = self.prepare_pad_from_target_shape(pad_shape, ndim)
+            self.pad = None  # pad will be defined based on inputs shape
+        self.value = value
+        super(PadAroundCentre, self).__init__()
 
-        self.built = True
-        super(PadAroundCentre, self).build(input_shape)
+    @staticmethod
+    def prepare_pad_from_margins(pad_margin, ndim):
+        if isinstance(pad_margin, int):
+            return (pad_margin, ) * ndim
+        elif isinstance(pad_margin, list):
+            pad_margin = np.array(pad_margin)
+        if isinstance(pad_margin, np.ndarray):
+            if len(pad_margin) == ndim:
+                pad_margin = np.repeat(pad_margin, 2)
+            return tuple(pad_margin)
+
+    @staticmethod
+    def prepare_pad_from_target_shape(pad_shape, ndim):
+        if isinstance(pad_shape, int):
+            # pad all dimensions to same shape
+            pad_shape = np.asarray([pad_shape for _ in range(ndim)])
+        elif isinstance(pad_shape, list):
+            pad_shape = np.asarray(pad_shape)
+        if isinstance(pad_shape, np.ndarray):
+            assert len(pad_shape) == ndim
+        return pad_shape
 
     def forward(self, inputs):
-        n_dims = len(inputs.shape) - 2
-        if self.pad_margin is not None:
-            pad = np.transpose(np.array([[0] + utils.reformat_to_list(self.pad_margin, n_dims) + [0]] * 2))
-
-        return torch.pad(inputs, pad, mode='CONSTANT', constant_values=self.value)
+        if self.pad_shape is not None:
+            self.pad = tuple(self.pad_shape - inputs.shape[2:])
+        return torch.nn.functional.pad(inputs, self.pad, mode='constant', value=self.value)
 
 
 class MaskEdges(nn.Module):
@@ -1523,7 +1511,7 @@ class MaskEdges(nn.Module):
 
         # mask second_channel
         if torch.greater(torch.distributions.uniform.Uniform(0, 1).sample([1]), 1 - self.prob_mask):
-            if not self.axes:
+            if self.axes is not None:
                 mask = torch.ones_like(inputs)
             inputs *= mask
 
