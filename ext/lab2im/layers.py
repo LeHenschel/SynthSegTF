@@ -1404,7 +1404,8 @@ class ResetValuesToZero(nn.Module):
 
 
 class ConvertLabels(nn.Module):
-    """Convert all labels in a tensor by the corresponding given set of values.
+    """
+    Convert all labels in a tensor by the corresponding given set of values.
     labels_converted = ConvertLabels(source_values, dest_values)(labels).
     labels must be an int32 tensor, and labels_converted will also be int32.
 
@@ -1415,25 +1416,15 @@ class ConvertLabels(nn.Module):
     which enables to remap label maps to [0, ..., N-1].
     """
 
-    def __init__(self, source_values, dest_values=None, **kwargs):
+    def __init__(self, source_values, dest_values=None):
         self.source_values = source_values
         self.dest_values = dest_values
-        self.lut = None
-        super(ConvertLabels, self).__init__(**kwargs)
+        self.lut = torch.as_tensor(utils.get_mapping_lut(self.source_values, dest=self.dest_values))
+        super(ConvertLabels, self).__init__()
 
-    def get_config(self):
-        config = super().get_config()
-        config["source_values"] = self.source_values
-        config["dest_values"] = self.dest_values
-        return config
-
-    def build(self, input_shape):
-        self.lut = tf.convert_to_tensor(utils.get_mapping_lut(self.source_values, dest=self.dest_values), dtype='int32')
-        self.built = True
-        super(ConvertLabels, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
-        return tf.gather(self.lut, tf.cast(inputs, dtype='int32'))
+    def forward(self, inputs):
+        out = self.lut[inputs.ravel()]
+        return out.reshape(inputs.shape)
 
 
 class PadAroundCentre(nn.Module):
