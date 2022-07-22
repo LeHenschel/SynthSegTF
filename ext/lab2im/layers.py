@@ -1572,6 +1572,8 @@ class MaskEdges(nn.Module):
 
         # mask second_channel
         if torch.greater(torch.distributions.uniform.Uniform(0, 1).sample([1]), 1 - self.prob_mask):
+            if not self.axes:
+                mask = torch.ones_like(inputs)
             inputs *= mask
 
         return [inputs, mask]
