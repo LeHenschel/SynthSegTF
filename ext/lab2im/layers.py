@@ -1055,7 +1055,8 @@ class MimicAcquisition(nn.Module):
 
 
 class BiasFieldCorruption(nn.Module):
-    """This layer applies a smooth random bias field to the input by applying the following steps:
+    """
+    This layer applies a smooth random bias field to the input by applying the following steps:
     1) we first sample a value for the standard deviation of a centred normal distribution
     2) a small-size SVF is sampled from this normal distribution
     3) the small SVF is then resized with trilinear interpolation to image size
@@ -1069,73 +1070,46 @@ class BiasFieldCorruption(nn.Module):
     :param same_bias_for_all_channels: whether to apply the same bias field to all the channels of the input tensor.
     """
 
-    def __init__(self, bias_field_std=.5, bias_shape_factor=.025, same_bias_for_all_channels=False, **kwargs):
+    def __init__(self, bias_field_std=.5, bias_shape_factor=.025, same_bias_for_all_channels=False, ndims=3):
 
         # input shape
         self.several_inputs = False
-        self.inshape = None
-        self.n_dims = None
-        self.n_channels = None
-
-        # sampling shape
-        self.std_shape = None
-        self.small_bias_shape = None
+        self.n_dims = ndims
 
         # bias field parameters
         self.bias_field_std = bias_field_std
         self.bias_shape_factor = bias_shape_factor
         self.same_bias_for_all_channels = same_bias_for_all_channels
 
-        super(BiasFieldCorruption, self).__init__(**kwargs)
+        super(BiasFieldCorruption, self).__init__()
 
-    def get_config(self):
-        config = super().get_config()
-        config["bias_field_std"] = self.bias_field_std
-        config["bias_shape_factor"] = self.bias_shape_factor
-        config["same_bias_for_all_channels"] = self.same_bias_for_all_channels
-        return config
+    def call(self, inputs):
 
-    def build(self, input_shape):
-
-        # input shape
-        if isinstance(input_shape, list):
-            self.several_inputs = True
-            self.inshape = input_shape
-        else:
-            self.inshape = [input_shape]
-        self.n_dims = len(self.inshape[0]) - 2
-        self.n_channels = self.inshape[0][-1]
-
-        # sampling shapes
-        self.std_shape = [1] * (self.n_dims + 1)
-        self.small_bias_shape = utils.get_resample_shape(self.inshape[0][1:self.n_dims + 1], self.bias_shape_factor, 1)
-        if not self.same_bias_for_all_channels:
-            self.std_shape[-1] = self.n_channels
-            self.small_bias_shape[-1] = self.n_channels
-
-        self.built = True
-        super(BiasFieldCorruption, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
-
-        if not self.several_inputs:
+        if not len(inputs) > 0:
             inputs = [inputs]
 
         if self.bias_field_std > 0:
-
             # sampling shapes
-            batchsize = tf.split(tf.shape(inputs[0]), [1, -1])[0]
-            std_shape = tf.concat([batchsize, tf.convert_to_tensor(self.std_shape, dtype='int32')], 0)
-            bias_shape = tf.concat([batchsize, tf.convert_to_tensor(self.small_bias_shape, dtype='int32')], axis=0)
+            batchsize, channels = inputs[0].shape[0], inputs[0].shape[1]
+            if not self.same_bias_for_all_channels:
+                std_shape = (batchsize, channels) + (1,) * self.n_dims
+            else:
+                std_shape = (batchsize, ) + (1, ) * (self.n_dims + 1)
+
+            small_bias_shape = tuple(np.ceil(np.asarray(inputs[0].shape[2:]) * self.bias_shape_factor))
+            if not self.same_bias_for_all_channels:
+                bias_shape = (batchsize, channels,) + small_bias_shape
+            else:
+                bias_shape = (batchsize, 1,) + small_bias_shape
 
             # sample small bias field
-            bias_field = tf.random.normal(bias_shape, stddev=tf.random.uniform(std_shape, maxval=self.bias_field_std))
+            bias_field = torch.randn(bias_shape) * torch.distributions.uniform.Uniform(low=0, high=self.bias_field_std).sample(std_shape)
 
             # resize bias field and take exponential
             bias_field = nrn_layers.Resize(size=self.inshape[0][1:self.n_dims + 1], interp_method='linear')(bias_field)
-            bias_field = tf.math.exp(bias_field)
+            bias_field = torch.exp(bias_field)
 
-            return [tf.math.multiply(bias_field, v) for v in inputs]
+            return [torch.multiply(bias_field, v) for v in inputs]
 
         else:
             return inputs
