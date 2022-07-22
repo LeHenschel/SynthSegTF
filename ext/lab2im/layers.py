@@ -39,6 +39,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 
+
 # project imports
 from . import utils
 from . import edit_tensors as l2i_et
@@ -1195,7 +1196,7 @@ class IntensityAugmentation(nn.Module):
 
         # prepare shape for sampling the noise and gamma std dev (depending on whether we augment channels separately)
         # Sample shape = batch, C/1, 1 * ndims = Batch, C, 1, 1, 1 for threeD
-        if (self.noise_std > 0) | (self.gamma_std > 0):
+        if (self.noise_std > 0) | (self.gamma_std > 0) | (self.normalize):
             if self.separate_channels:
                 sample_shape = (inputs.shape[0], inputs.shape[1], ) + (1, ) * self.n_dim
             else:
@@ -1220,19 +1221,22 @@ class IntensityAugmentation(nn.Module):
         # normalise
         if self.normalise:
             # define robust min and max by sorting values and taking percentile
+            flat_dim = 2 if self.separate_channels else 1
             if self.perc is not None:
-                intensities = torch.sort(inputs.reshape(sample_shape), dim=2)
-                flat_dim = 2 if not self.separate_channels else 1
                 flatten_shape = np.prod(inputs.shape[flat_dim:])
-                m = intensities[:, :, max(int(self.perc[0] * flatten_shape), 0), ...]
-                M = intensities[:, :, min(int(self.perc[1] * flatten_shape), flatten_shape - 1), ...]
+                sample_shape = tuple([p for p in inputs.shape[:flat_dim]] + [flatten_shape])
+                intensities, _ = torch.sort(inputs.reshape(sample_shape), dim=flat_dim)
+
+                m = intensities[..., max(int(self.perc[0] * flatten_shape), 0)].reshape(sample_shape)
+                M = intensities[..., min(int(self.perc[1] * flatten_shape), flatten_shape - 1)].reshape(sample_shape)
 
             # simple min and max
             else:
-                m = torch.min(inputs, dim=1, keepdim=True)
-                M = torch.max(inputs, dim=1, keepdim=True)
+                sum_dims = tuple(range(flat_dim, len(inputs.shape)))
+                m = torch.amin(inputs, dim=sum_dims).reshape(sample_shape)
+                M = torch.amax(inputs, dim=sum_dims).reshape(sample_shape)
 
-            # normalise
+            # normalise --> to range 0-1
             inputs = torch.clamp(inputs, min=m, max=M)
             inputs = (inputs - m) / (M - m + self.epsilon)
 
@@ -1478,4 +1482,20 @@ class MaskEdges(nn.Module):
             inputs *= mask
 
         return [inputs, mask]
+
+
+if __name__ == "__main__":
+    import nibabel as nib
+    test_orig_f = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/Data/sub-CC00852XX11_ses-28210/orig.mgz"
+    test_aseg_f = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/Data/sub-CC00852XX11_ses-28210/aseg.mgz"
+
+    test_orig = np.expand_dims(np.asanyarray(nib.load(test_orig_f).dataobj), axis=(0, 1))
+    test_aseg = np.asanyarray(nib.load(test_aseg_f).dataobj)
+
+    # Apply Class to Test if it works correctly
+    class_tested = IntensityAugmentation(clip=300, normalise=True, gamma_std=.4,
+                                         separate_channels=True)
+    img_aug = class_tested.forward(test_orig)
+
+    # Plot image slice for testing purposes
 
