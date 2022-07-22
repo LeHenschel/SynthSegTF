@@ -939,11 +939,10 @@ class MimicAcquisition(nn.Module):
     def __init__(self, volume_res, min_subsample_res, resample_shape, build_dist_map=False, noise_std=0, **kwargs):
 
         # resolutions and dimensions
-        self.volume_res = volume_res
+        self.volume_res = torch.as_tensor(volume_res)
         self.min_subsample_res = min_subsample_res
         self.noise_std = noise_std
         self.n_dims = len(self.volume_res)
-        self.n_channels = None
         self.add_batchsize = None
 
         # input and output shapes
@@ -957,67 +956,41 @@ class MimicAcquisition(nn.Module):
         # whether to return a map indicating the distance from the interpolated voxels, to acquired ones.
         self.build_dist_map = build_dist_map
 
-        super(MimicAcquisition, self).__init__(**kwargs)
+        super(MimicAcquisition, self).__init__()
 
-    def get_config(self):
-        config = super().get_config()
-        config["volume_res"] = self.volume_res
-        config["min_subsample_res"] = self.min_subsample_res
-        config["noise_std"] = self.noise_std
-        config["resample_shape"] = self.resample_shape
-        config["build_dist_map"] = self.build_dist_map
-        return config
-
-    def build(self, input_shape):
-
-        # set up input shape and acquisistion shape
-        self.inshape = input_shape[0][1:]
-        self.n_channels = input_shape[0][-1]
-        self.add_batchsize = False if (input_shape[1][0] is None) else True
-        down_tensor_shape = np.int32(np.array(self.inshape[:-1]) * self.volume_res / self.min_subsample_res)
-
-        # build interpolation meshgrids
-        self.down_grid = tf.expand_dims(tf.stack(nrn_utils.volshape_to_ndgrid(down_tensor_shape), -1), axis=0)
-        self.up_grid = tf.expand_dims(tf.stack(nrn_utils.volshape_to_ndgrid(self.resample_shape), -1), axis=0)
-
-        self.built = True
-        super(MimicAcquisition, self).build(input_shape)
-
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs):
 
         # sort inputs
         assert len(inputs) == 2, 'inputs must have two items, the tensor to resample, and the downsampling resolution'
-        vol = inputs[0]
-        subsample_res = tf.cast(inputs[1], dtype='float32')
-        vol = K.reshape(vol, [-1, *self.inshape])  # necessary for multi_gpu models
-        batchsize = tf.split(tf.shape(vol), [1, -1])[0]
-        tile_shape = tf.concat([batchsize, tf.ones([1], dtype='int32')], 0)
+        vol, subsample_res = inputs
+
+        batchsize, channels = vol.shape[0], vol.shape[1]
+        tile_shape = (batchsize, 1)
 
         # get downsampling and upsampling factors
         if self.add_batchsize:
-            subsample_res = tf.tile(tf.expand_dims(subsample_res, 0), tile_shape)
-        down_shape = tf.cast(tf.convert_to_tensor(np.array(self.inshape[:-1]) * self.volume_res, dtype='float32') /
-                             subsample_res, dtype='int32')
-        down_zoom_factor = tf.cast(down_shape / tf.convert_to_tensor(self.inshape[:-1]), dtype='float32')
-        up_zoom_factor = tf.cast(tf.convert_to_tensor(self.resample_shape, dtype='int32') / down_shape, dtype='float32')
+            subsample_res = torch.tile(torch.unsqueeze(subsample_res, 0), tile_shape)
+
+        down_shape = torch.multiply(vol.shape[2:], self.volume_res) / subsample_res
+        down_zoom_factor = torch.div(down_shape, vol.shape[2:])
+        up_zoom_factor = torch.div(self.resample_shape, down_shape)
 
         # downsample
-        down_loc = tf.tile(self.down_grid, tf.concat([batchsize, tf.ones([self.n_dims + 1], dtype='int32')], 0))
-        down_loc = tf.cast(down_loc, 'float32') / l2i_et.expand_dims(down_zoom_factor, axis=[1] * self.n_dims)
-        inshape_tens = tf.tile(tf.expand_dims(tf.convert_to_tensor(self.inshape[:-1]), 0), tile_shape)
+        down_loc = torch.tile(self.down_grid, (batchsize, ) + (1, ) * (self.n_dims + 1))
+        down_loc = down_loc / l2i_et.expand_dims(down_zoom_factor, axis=[1] * self.n_dims)
+        inshape_tens = torch.tile(torch.unsqueeze(vol.shape[2:], 0), tile_shape)
         inshape_tens = l2i_et.expand_dims(inshape_tens, axis=[1] * self.n_dims)
-        down_loc = K.clip(down_loc, 0., tf.cast(inshape_tens, 'float32'))
+        down_loc = torch.clip(down_loc, 0., inshape_tens)
         vol = tf.map_fn(self._single_down_interpn, [vol, down_loc], tf.float32)
 
         # add noise
         if self.noise_std > 0:
-            sample_shape = tf.concat([batchsize, tf.ones([self.n_dims], dtype='int32'),
-                                      self.n_channels * tf.ones([1], dtype='int32')], 0)
-            vol += tf.random.normal(tf.shape(vol), stddev=tf.random.uniform(sample_shape, maxval=self.noise_std))
+            sample_shape = (batchsize,) + (1, ) * self.n_dims + (1, ) * channels
+            vol += torch.randn(vol.shape) * torch.distributions.uniform.Uniform(low=0, high=self.noise_std).sample(sample_shape)
 
         # upsample
-        up_loc = tf.tile(self.up_grid, tf.concat([batchsize, tf.ones([self.n_dims + 1], dtype='int32')], axis=0))
-        up_loc = tf.cast(up_loc, 'float32') / l2i_et.expand_dims(up_zoom_factor, axis=[1] * self.n_dims)
+        up_loc = torch.tile(self.up_grid, (batchsize, ) + (1, ) * (self.n_dims + 1))
+        up_loc = up_loc / l2i_et.expand_dims(up_zoom_factor, axis=[1] * self.n_dims)
         vol = tf.map_fn(self._single_up_interpn, [vol, up_loc], tf.float32)
 
         # return upsampled volume
@@ -1028,16 +1001,16 @@ class MimicAcquisition(nn.Module):
         else:
 
             # get grid points
-            floor = tf.math.floor(up_loc)
-            ceil = tf.math.ceil(up_loc)
+            floor = torch.floor(up_loc)
+            ceil = torch.ceil(up_loc)
 
             # get distances of every voxel to higher and lower grid points for every dimension
             f_dist = up_loc - floor
             c_dist = ceil - up_loc
 
             # keep minimum 1d distances, and compute 3d distance to nearest grid point
-            dist = tf.math.minimum(f_dist, c_dist) * l2i_et.expand_dims(subsample_res, axis=[1] * self.n_dims)
-            dist = tf.math.sqrt(tf.math.reduce_sum(tf.math.square(dist), axis=-1, keepdims=True))
+            dist = torch.minimum(f_dist, c_dist) * l2i_et.expand_dims(subsample_res, axis=[1] * self.n_dims)
+            dist = torch.sqrt(torch.sum(torch.square(dist), dim=-1, keepdim=True))
 
             return [vol, dist]
 
