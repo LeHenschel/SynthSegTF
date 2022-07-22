@@ -1173,7 +1173,8 @@ class BiasFieldCorruption(nn.Module):
 
 
 class IntensityAugmentation(nn.Module):
-    """This layer enables to augment the intensities of the input tensor, as well as to apply min_max normalisation.
+    """
+    This layer enables to augment the intensities of the input tensor, as well as to apply min_max normalisation.
     The following steps are applied (all are optional):
     1) white noise corruption, with a randomly sampled std dev.
     2) clip the input between two values
@@ -1199,110 +1200,86 @@ class IntensityAugmentation(nn.Module):
     """
 
     def __init__(self, noise_std=0, clip=0, normalise=True, norm_perc=0, gamma_std=0, contrast_inversion=False,
-                 separate_channels=True, **kwargs):
+                 separate_channels=True, ndims=3, **kwargs):
+
 
         # shape attributes
-        self.n_dims = None
-        self.n_channels = None
-        self.flatten_shape = None
-        self.expand_minmax_dim = None
-        self.one = None
+        self.n_dims = ndims
+        self.gamma_std = gamma_std
+        self.separate_channels = separate_channels
+        self.expand_minmax_dim = self.n_dims if self.separate_channels else self.n_dims + 1
+        self.contrast_inversion = contrast_inversion
+        self.epsilon = 1e-7
 
         # inputs
         self.noise_std = noise_std
         self.clip = clip
-        self.clip_values = None
-        self.normalise = normalise
-        self.norm_perc = norm_perc
-        self.perc = None
-        self.gamma_std = gamma_std
-        self.separate_channels = separate_channels
-        self.contrast_inversion = contrast_inversion
 
         super(IntensityAugmentation, self).__init__(**kwargs)
 
-    def get_config(self):
-        config = super().get_config()
-        config["noise_std"] = self.noise_std
-        config["clip"] = self.clip
-        config["normalise"] = self.normalise
-        config["norm_perc"] = self.norm_perc
-        config["gamma_std"] = self.gamma_std
-        config["separate_channels"] = self.separate_channels
-        return config
-
-    def build(self, input_shape):
-        self.n_dims = len(input_shape) - 2
-        self.n_channels = input_shape[-1]
-        self.flatten_shape = np.prod(np.array(input_shape[1:-1]))
-        self.flatten_shape = self.flatten_shape * self.n_channels if not self.separate_channels else self.flatten_shape
-        self.expand_minmax_dim = self.n_dims if self.separate_channels else self.n_dims + 1
-        self.one = tf.ones([1], dtype='int32')
         if self.clip:
             self.clip_values = utils.reformat_to_list(self.clip)
             self.clip_values = self.clip_values if len(self.clip_values) == 2 else [0, self.clip_values[0]]
         else:
             self.clip_values = None
+        self.normalise = normalise
+        self.norm_perc = norm_perc
+        self.perc = None
         if self.norm_perc:
             self.perc = utils.reformat_to_list(self.norm_perc)
             self.perc = self.perc if len(self.perc) == 2 else [self.perc[0], 1 - self.perc[0]]
-        else:
-            self.perc = None
 
-        self.built = True
-        super(IntensityAugmentation, self).build(input_shape)
+        super(IntensityAugmentation, self).__init__()
 
-    def call(self, inputs, **kwargs):
+    def forward(self, inputs):
 
         # prepare shape for sampling the noise and gamma std dev (depending on whether we augment channels separately)
-        batchsize = tf.split(tf.shape(inputs), [1, -1])[0]
-        if (self.noise_std > 0) | (self.gamma_std > 0) | self.contrast_inversion:
-            sample_shape = tf.concat([batchsize, tf.ones([self.n_dims], dtype='int32')], 0)
+
+        # Sample shape = batch, C/1, 1 * ndims = Batch, C, 1, 1, 1 for threeD
+        if (self.noise_std > 0) | (self.gamma_std > 0)| self.contrast_inversion:
             if self.separate_channels:
-                sample_shape = tf.concat([sample_shape, self.n_channels * self.one], 0)
+                sample_shape = (inputs.shape[0], inputs.shape[1], ) + (1, ) * self.n_dim
             else:
-                sample_shape = tf.concat([sample_shape, self.one], 0)
+                sample_shape = (inputs.shape[0], 1,) + (1,) * self.n_dims
         else:
             sample_shape = None
 
         # add noise
         if self.noise_std > 0:
-            noise_stddev = tf.random.uniform(sample_shape, maxval=self.noise_std)
+            noise_stddev = torch.distributions.uniform.Uniform(low=0, high=self.noise_std).sample(sample_shape)
             if self.separate_channels:
-                noise = tf.random.normal(tf.shape(inputs), stddev=noise_stddev)
+                noise = torch.randn(inputs.shape) * noise_stddev
             else:
-                noise = tf.random.normal(tf.shape(tf.split(inputs, [1, -1], -1)[0]), stddev=noise_stddev)
-                noise = tf.tile(noise, tf.convert_to_tensor([1] * (self.n_dims + 1) + [self.n_channels]))
+                noise = torch.randn((inputs.shape[0], 1, inputs.shape[2:])) * noise_stddev
+                noise = torch.tile(noise, (1, inputs.shape[1], ) + (1, ) * self.n_dims)
             inputs = inputs + noise
 
         # clip images to given values
         if self.clip_values is not None:
-            inputs = K.clip(inputs, self.clip_values[0], self.clip_values[1])
+            inputs = torch.clip(inputs, self.clip_values[0], self.clip_values[1])
 
         # normalise
         if self.normalise:
             # define robust min and max by sorting values and taking percentile
             if self.perc is not None:
-                if self.separate_channels:
-                    shape = tf.concat([batchsize, self.flatten_shape * self.one, self.n_channels * self.one], 0)
-                else:
-                    shape = tf.concat([batchsize, self.flatten_shape * self.one], 0)
-                intensities = tf.sort(tf.reshape(inputs, shape), axis=1)
-                m = intensities[:, max(int(self.perc[0] * self.flatten_shape), 0), ...]
-                M = intensities[:, min(int(self.perc[1] * self.flatten_shape), self.flatten_shape - 1), ...]
+                intensities = torch.sort(inputs.reshape(sample_shape), dim=2)
+                flat_dim = 2 if not self.separate_channels else 1
+                flatten_shape = np.prod(inputs.shape[flat_dim:])
+                m = intensities[:, :, max(int(self.perc[0] * flatten_shape), 0), ...]
+                M = intensities[:, :, min(int(self.perc[1] * flatten_shape), flatten_shape - 1), ...]
+
             # simple min and max
             else:
-                m = K.min(inputs, axis=list(range(1, self.expand_minmax_dim + 1)))
-                M = K.max(inputs, axis=list(range(1, self.expand_minmax_dim + 1)))
+                m = torch.min(inputs, dim=1, keepdim=True)
+                M = torch.max(inputs, dim=1, keepdim=True)
+
             # normalise
-            m = l2i_et.expand_dims(m, axis=[1] * self.expand_minmax_dim)
-            M = l2i_et.expand_dims(M, axis=[1] * self.expand_minmax_dim)
-            inputs = tf.clip_by_value(inputs, m, M)
-            inputs = (inputs - m) / (M - m + K.epsilon())
+            inputs = torch.clamp(inputs, min=m, max=M)
+            inputs = (inputs - m) / (M - m + self.epsilon)
 
         # apply voxel-wise exponentiation
         if self.gamma_std > 0:
-            inputs = tf.math.pow(inputs, tf.math.exp(tf.random.normal(sample_shape, stddev=self.gamma_std)))
+            inputs = torch.pow(inputs, torch.exp(torch.randn(sample_shape) * self.gamma_std))
 
         # apply random contrast inversion
         if self.contrast_inversion:
@@ -1390,11 +1367,11 @@ class ResetValuesToZero(nn.Module):
         [0, 0, 0, 0, 4, 4, 4]]
     """
 
-    def __init__(self, values, **kwargs):
+    def __init__(self, values):
         assert values is not None, 'please provide correct list of values, received None'
         self.values = torch.as_tensor(utils.reformat_to_list(values))
         self.n_values = len(values)
-        super(ResetValuesToZero, self).__init__(**kwargs)
+        super(ResetValuesToZero, self).__init__()
 
     def forward(self, inputs):
         values = self.values.type_as(inputs)
