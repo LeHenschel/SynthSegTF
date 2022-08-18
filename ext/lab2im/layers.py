@@ -100,7 +100,6 @@ class RandomSpatialDeformation(nn.Module):
                  prob_deform=1,
                  **kwargs):
 
-
         # shape attributes
         self.n_inputs = 1
         self.inshape = None
@@ -127,40 +126,6 @@ class RandomSpatialDeformation(nn.Module):
         self.inter_method = inter_method
 
         super(RandomSpatialDeformation, self).__init__()
-
-<<<<<<< HEAD
-    def get_config(self):
-        config = {}
-        config["scaling_bounds"] = self.scaling_bounds
-        config["rotation_bounds"] = self.rotation_bounds
-        config["shearing_bounds"] = self.shearing_bounds
-        config["translation_bounds"] = self.translation_bounds
-        config["enable_90_rotations"] = self.enable_90_rotations
-        config["nonlin_std"] = self.nonlin_std
-        config["nonlin_shape_factor"] = self.nonlin_shape_factor
-        config["inter_method"] = self.inter_method
-        config["prob_deform"] = self.prob_deform
-        return config
-
-=======
->>>>>>> Adapted MaskEdges function
-    def build(self, input_shape):
-
-        if not isinstance(input_shape, list):
-            inputshape = [input_shape]
-        else:
-            self.n_inputs = len(input_shape)
-            inputshape = input_shape
-        self.inshape = inputshape[0][1:]
-        self.n_dims = len(self.inshape) - 1
-
-        if self.apply_elastic_trans:
-            self.small_shape = utils.get_resample_shape(self.inshape[:self.n_dims],
-                                                        self.nonlin_shape_factor, self.n_dims)
-        else:
-            self.small_shape = None
-
-        self.inter_method = utils.reformat_to_list(self.inter_method, length=self.n_inputs, dtype='str')
 
     def forward(self, inputs):
 
@@ -1150,7 +1115,6 @@ class IntensityAugmentation(nn.Module):
     def __init__(self, noise_std=0, clip=0, normalise=True, norm_perc=0, gamma_std=0, contrast_inversion=False,
                  separate_channels=True, ndims=3, **kwargs):
 
-
         # shape attributes
         self.n_dims = ndims
         self.gamma_std = gamma_std
@@ -1182,7 +1146,6 @@ class IntensityAugmentation(nn.Module):
     def forward(self, inputs):
 
         # prepare shape for sampling the noise and gamma std dev (depending on whether we augment channels separately)
-
         # Sample shape = batch, C/1, 1 * ndims = Batch, C, 1, 1, 1 for threeD
         if (self.noise_std > 0) | (self.gamma_std > 0)| self.contrast_inversion | (self.normalize):
 
@@ -1267,7 +1230,6 @@ class DiceLoss(_Loss):
         x = inputs[0]
         y = inputs[1]
         if self.enable_checks:  # disabling is useful to, e.g., use incomplete label maps
-
             x = torch.clip(x / x.sum(-1), 0, 1)
             y = torch.clip(y / y.sum(-1), 0, 1)
 
@@ -1277,7 +1239,6 @@ class DiceLoss(_Loss):
         top = 2 * intersection.sum(tuple(range(2, intersection.ndim)))
         bottom = union.sum(tuple(range(2, union.ndim))) + self.eps
         last_tensor = 1 - (top / bottom)
-
         return last_tensor.sum()
 
 
@@ -1392,7 +1353,6 @@ class PadAroundCentre(nn.Module):
             if len(pad_margin) == ndim:
                 pad_margin = np.repeat(pad_margin, 2)
             return tuple(pad_margin)
-
 
     @staticmethod
     def prepare_pad_from_target_shape(pad_shape, ndim):
@@ -1604,6 +1564,7 @@ class RandomDilationErosion(Layer):
     def compute_output_shape(self, input_shape):
         return input_shape[0] if self.several_inputs else input_shape
 
+
 if __name__ == "__main__":
     import nibabel as nib
     test_orig_f = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/Data/sub-CC00852XX11_ses-28210/orig.mgz"
@@ -1618,5 +1579,4 @@ if __name__ == "__main__":
     img_aug = class_tested.forward(test_orig)
 
     # Plot image slice for testing purposes
-
 
