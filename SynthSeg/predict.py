@@ -155,6 +155,7 @@ def predict(path_images,
             for j, lab in enumerate(lr_corresp_unique[i]):
                 lr_indices[i, j] = np.where(segmentation_labels == lab)[0]
     else:
+        # In this step, duplicates are removed, length of segmentation_labels == n_classes from the model
         segmentation_labels, indices = np.unique(segmentation_labels, return_index=True)
         lr_indices = None
 
