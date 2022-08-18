@@ -68,6 +68,12 @@ import keras.layers as KL
 import keras.backend as K
 from datetime import timedelta
 from scipy.ndimage.morphology import distance_transform_edt
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 
 
 # ---------------------------------------------- loading/saving functions ----------------------------------------------
@@ -390,7 +396,7 @@ def reformat_to_n_channels_array(var, n_dims=3, n_channels=1):
 # ----------------------------------------------- path-related functions -----------------------------------------------
 
 
-def list_images_in_folder(path_dir, include_single_image=True):
+def list_images_in_folder(path_dir, include_single_image=True, img_name="/brainmask.mgz"):
     """List all files with extension nii, nii.gz, mgz, or npz whithin a folder."""
     basename = os.path.basename(path_dir)
     if include_single_image & \
@@ -404,8 +410,9 @@ def list_images_in_folder(path_dir, include_single_image=True):
                                  glob.glob(os.path.join(path_dir, '*.mgz')) +
                                  glob.glob(os.path.join(path_dir, '*.npz')))
         elif os.path.isfile(path_dir):
+            logger.debug(f"Reading directories from file {path_dir}. Looking for image {img_name}")
             with open(path_dir, "r") as pfile:
-                list_images = [line.strip() + "/brainmask.mgz" for line in pfile.readlines()]
+                list_images = [line.strip() + img_name for line in pfile.readlines()]
         else:
             raise Exception('extension not supported for %s, only use: nii.gz, .nii, .mgz, or .npz' % path_dir)
         assert len(list_images) > 0, 'no .nii, .nii.gz, .mgz or .npz image could be found in %s' % path_dir
