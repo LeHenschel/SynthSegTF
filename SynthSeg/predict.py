@@ -36,6 +36,7 @@ def predict(path_images,
             path_segmentations,
             path_model,
             segmentation_labels,
+            pred_name="aseg.synthseg.mgz",
             n_neutral_labels=None,
             path_posteriors=None,
             path_resampled=None,
@@ -132,8 +133,8 @@ def predict(path_images,
 
     # prepare input/output filepaths
     path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, compute, unique_vol_file = \
-        prepare_output_files(path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, recompute)
-
+        prepare_output_files(path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, recompute,
+                             pred_name)
     # get label list
     segmentation_labels, _ = utils.get_list_labels(label_list=segmentation_labels)
     n_labels = len(segmentation_labels)
@@ -152,6 +153,7 @@ def predict(path_images,
             for j, lab in enumerate(lr_corresp_unique[i]):
                 lr_indices[i, j] = np.where(segmentation_labels == lab)[0]
     else:
+        # In this step, duplicates are removed, length of segmentation_labels == n_classes from the model
         segmentation_labels, indices = np.unique(segmentation_labels, return_index=True)
         lr_indices = None
 
@@ -207,6 +209,7 @@ def predict(path_images,
 
             # write results to disk
             utils.save_volume(seg, aff, h, path_segmentation, dtype='int32')
+
             if path_posterior is not None:
                 if n_channels > 1:
                     posteriors = utils.add_axis(posteriors, axis=[0, -1])
@@ -261,7 +264,7 @@ def predict(path_images,
                             verbose=verbose)
 
 
-def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, out_volumes, recompute):
+def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, out_volumes, recompute, pred_name="aseg.synthseg.mgz"):
     '''
     Prepare output files.
     '''
@@ -273,7 +276,8 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
     # convert path to absolute paths
     path_images = os.path.abspath(path_images)
     basename = os.path.basename(path_images)
-    out_seg = os.path.abspath(out_seg)
+
+    #out_seg = os.path.abspath(out_seg) if (out_seg is not None) else out_seg
     out_posteriors = os.path.abspath(out_posteriors) if (out_posteriors is not None) else out_posteriors
     out_resampled = os.path.abspath(out_resampled) if (out_resampled is not None) else out_resampled
     out_volumes = os.path.abspath(out_volumes) if (out_volumes is not None) else out_volumes
@@ -335,11 +339,8 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
         assert out_seg[-4:] != '.txt', 'path_segmentations can only be given as text file when path_images is.'
         if (out_seg[-7:] == '.nii.gz') | (out_seg[-4:] == '.nii') | (out_seg[-4:] == '.mgz') | (out_seg[-4:] == '.npz'):
             raise Exception('Output folders cannot have extensions: .nii.gz, .nii, .mgz, or .npz, had %s' % out_seg)
-        utils.mkdir(out_seg)
-        out_seg = [os.path.join(out_seg, os.path.basename(image)).replace('.nii', '_synthseg.nii') for image in
-                   path_images]
-        out_seg = [seg_path.replace('.mgz', '_synthseg.mgz') for seg_path in out_seg]
-        out_seg = [seg_path.replace('.npz', '_synthseg.npz') for seg_path in out_seg]
+
+        out_seg = [image.replace(os.path.basename(image), pred_name) for image in path_images]
         recompute_seg = [not os.path.isfile(path_seg) for path_seg in out_seg]
 
         # volumes

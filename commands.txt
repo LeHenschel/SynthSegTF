@@ -1,0 +1,19 @@
+# Train original SynthSeg (GPU gen + 3D UNet)
+jobsubmit -p rtx8000 -m 10G -t 4-15:00:00 \
+-o /autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/logs/synthseg_run2.log \
+-A zolleigp -M ALL -c 6 -G 1 -- python3 /autofs/vast/lzgroup/Users/LeonieHenschel/SynthSegTF/run_model.py
+
+# Run predictions
+jobsubmit -p rtx8000 -m 10G -t 1:00:00 \
+-o /autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/logs/synthseg.log \
+-A zolleigp -M ALL -c 6 -G 1 -- python3 /autofs/vast/lzgroup/Users/LeonieHenschel/SynthSegTF/scripts/commands/predict.py \
+--path_images /autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/data/dataset_split_validation.csv \
+--path_segmentations /autofs/vast/lzgroup/Projects/FastInfantSurfer/Data \
+--path_model /autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_net1/dice_073.h5 \
+--segmentation_labels /autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/SegmentationLabels.npy \
+--neutral_labels 18 -
+
+# Run original predictions
+python3 ./scripts/commands/SynthSeg_predict.py \
+--i /autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/data/dataset_split_validation.csv \
+--o /autofs/vast/lzgroup/Projects/FastInfantSurfer/Data

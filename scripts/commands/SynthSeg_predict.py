@@ -83,19 +83,19 @@ tf.config.threading.set_intra_op_parallelism_threads(args['threads'])
 if args['robust']:
     args['path_model_segmentation'] = os.path.join(model_dir, 'synthseg_robust_2.0.h5')
 else:
-    args['path_model_segmentation'] = os.path.join(model_dir, 'synthseg_2.0.h5')
+    args['path_model_segmentation'] = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_net1/dice_073.h5' #os.path.join(model_dir, 'synthseg_2.0.h5')
 args['path_model_parcellation'] = os.path.join(model_dir, 'synthseg_parc_2.0.h5')
 args['path_model_qc'] = os.path.join(model_dir, 'synthseg_qc_2.0.h5')
 
 # path labels
-args['labels_segmentation'] = os.path.join(labels_dir, 'synthseg_segmentation_labels_2.0.npy')
+args['labels_segmentation'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/dhcp_SegmentationLabels.npy" # os.path.join(labels_dir, 'synthseg_segmentation_labels_2.0.npy')
 args['labels_denoiser'] = os.path.join(labels_dir, 'synthseg_denoiser_labels_2.0.npy')
 args['labels_parcellation'] = os.path.join(labels_dir, 'synthseg_parcellation_labels.npy')
 args['labels_qc'] = os.path.join(labels_dir, 'synthseg_qc_labels_2.0.npy')
-args['names_segmentation_labels'] = os.path.join(labels_dir, 'synthseg_segmentation_names_2.0.npy')
+args['names_segmentation_labels'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/dhcp_SegmentationNames.npy" #os.path.join(labels_dir, 'synthseg_segmentation_names_2.0.npy')
 args['names_parcellation_labels'] = os.path.join(labels_dir, 'synthseg_parcellation_names.npy')
 args['names_qc_labels'] = os.path.join(labels_dir, 'synthseg_qc_names_2.0.npy')
-args['topology_classes'] = os.path.join(labels_dir, 'synthseg_topological_classes_2.0.npy')
+args['topology_classes'] = "/autofs/vast/lzgroup/Projects/FastInfantSurfer/hdf5_sets/dhcp_TopologicalClasses.npy" #os.path.join(labels_dir, 'synthseg_topological_classes_2.0.npy')
 args['n_neutral_labels'] = 19
 
 # use previous model if needed
@@ -106,7 +106,7 @@ if args['v1']:
     args['names_segmentation_labels'] = args['names_segmentation_labels'].replace('_2.0.npy', '.npy')
     args['names_qc_labels'] = args['names_qc_labels'].replace('_2.0.npy', '.npy')
     args['topology_classes'] = args['topology_classes'].replace('_2.0.npy', '.npy')
-    args['n_neutral_labels'] = 18
+    args['n_neutral_labels'] = 4
 
 # run prediction
 predict(path_images=args['i'],

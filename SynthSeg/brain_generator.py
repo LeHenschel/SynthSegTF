@@ -61,7 +61,8 @@ class BrainGenerator:
                  blur_range=1.03,
                  bias_field_std=.5,
                  bias_shape_factor=.025,
-                 return_gradients=False):
+                 return_gradients=False,
+                 label_img_name="/aseg.mgz"):
         """
         This class is wrapper around the labels_to_image_model model. It contains the GPU model that generates images
         from labels maps, and a python generator that supplies the input data for this model.
@@ -202,7 +203,7 @@ class BrainGenerator:
         """
 
         # prepare data files
-        self.labels_paths = utils.list_images_in_folder(labels_dir)
+        self.labels_paths = utils.list_images_in_folder(labels_dir, img_name=label_img_name)
         self.path_patches = utils.list_images_in_folder(patch_dir) if (patch_dir is not None) else None
         if subjects_prob is not None:
             self.subjects_prob = np.array(utils.reformat_to_list(subjects_prob, load_as_numpy=True), dtype='float32')
