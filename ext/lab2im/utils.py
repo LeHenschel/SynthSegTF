@@ -63,9 +63,9 @@ import time
 import pickle
 import numpy as np
 import nibabel as nib
-import tensorflow as tf
-import keras.layers as KL
-import keras.backend as K
+#import tensorflow as tf
+#import keras.layers as KL
+#import keras.backend as K
 from datetime import timedelta
 from scipy.ndimage.morphology import distance_transform_edt
 import logging
@@ -677,7 +677,7 @@ def create_affine_transformation_matrix(n_dims, scaling=None, rotation=None, she
         return T_translation @ T_rot3 @ T_rot2 @ T_rot1 @ T_shearing @ T_scaling
 
 
-def sample_affine_transform(batchsize,
+def sample_affine_transform_tf(batchsize,
                             n_dims,
                             rotation_bounds=False,
                             scaling_bounds=False,
@@ -690,7 +690,7 @@ def sample_affine_transform(batchsize,
     if (rotation_bounds is not False) | (enable_90_rotations is not False):
         if n_dims == 2:
             if rotation_bounds is not False:
-                rotation = draw_value_from_distribution(rotation_bounds,
+                rotation = draw_value_from_distribution_tf(rotation_bounds,
                                                         size=1,
                                                         default_range=15.0,
                                                         return_as_tensor=True,
@@ -699,7 +699,7 @@ def sample_affine_transform(batchsize,
                 rotation = tf.zeros(tf.concat([batchsize, tf.ones(1, dtype='int32')], axis=0))
         else:  # n_dims = 3
             if rotation_bounds is not False:
-                rotation = draw_value_from_distribution(rotation_bounds,
+                rotation = draw_value_from_distribution_tf(rotation_bounds,
                                                         size=n_dims,
                                                         default_range=15.0,
                                                         return_as_tensor=True,
@@ -709,24 +709,24 @@ def sample_affine_transform(batchsize,
         if enable_90_rotations:
             rotation = tf.cast(tf.random.uniform(tf.shape(rotation), maxval=4, dtype='int32') * 90, 'float32') \
                        + rotation
-        T_rot = create_rotation_transform(rotation, n_dims)
+        T_rot = _tf(rotation, n_dims)
     else:
         T_rot = tf.tile(tf.expand_dims(tf.eye(n_dims), axis=0),
                         tf.concat([batchsize, tf.ones(2, dtype='int32')], axis=0))
 
     if shearing_bounds is not False:
-        shearing = draw_value_from_distribution(shearing_bounds,
+        shearing = draw_value_from_distribution_tf(shearing_bounds,
                                                 size=n_dims ** 2 - n_dims,
                                                 default_range=.01,
                                                 return_as_tensor=True,
                                                 batchsize=batchsize)
-        T_shearing = create_shearing_transform(shearing, n_dims)
+        T_shearing = create_shearing_transform_tf(shearing, n_dims)
     else:
         T_shearing = tf.tile(tf.expand_dims(tf.eye(n_dims), axis=0),
                              tf.concat([batchsize, tf.ones(2, dtype='int32')], axis=0))
 
     if scaling_bounds is not False:
-        scaling = draw_value_from_distribution(scaling_bounds,
+        scaling = draw_value_from_distribution_tf(scaling_bounds,
                                                size=n_dims,
                                                centre=1,
                                                default_range=.15,
@@ -740,7 +740,7 @@ def sample_affine_transform(batchsize,
     T = tf.matmul(T_scaling, tf.matmul(T_shearing, T_rot))
 
     if translation_bounds is not False:
-        translation = draw_value_from_distribution(translation_bounds,
+        translation = draw_value_from_distribution_tf(translation_bounds,
                                                    size=n_dims,
                                                    default_range=5,
                                                    return_as_tensor=True,
@@ -757,7 +757,7 @@ def sample_affine_transform(batchsize,
     return T
 
 
-def create_rotation_transform(rotation, n_dims):
+def create_rotation_transform_tf(rotation, n_dims):
     """build rotation transform from 3d or 2d rotation coefficients. Angles are given in degrees."""
     rotation = rotation * np.pi / 180
     if n_dims == 3:
@@ -799,7 +799,7 @@ def create_rotation_transform(rotation, n_dims):
     return T_rot
 
 
-def create_shearing_transform(shearing, n_dims):
+def create_shearing_transform_tf(shearing, n_dims):
     """build shearing transform from 2d/3d shearing coefficients"""
     shape = tf.shape(tf.expand_dims(shearing[..., 0], -1))
     if n_dims == 3:
@@ -963,7 +963,7 @@ def build_binary_structure(connectivity, n_dims, shape=None):
     return struct
 
 
-def draw_value_from_distribution(hyperparameter,
+def draw_value_from_distribution_tf(hyperparameter,
                                  size=1,
                                  distribution='uniform',
                                  centre=0.,
@@ -1050,6 +1050,93 @@ def draw_value_from_distribution(hyperparameter,
 
     return parameter_value
 
+
+def draw_value_from_distribution(hyperparameter,
+                                 size=1,
+                                 distribution='uniform',
+                                 centre=0.,
+                                 default_range=10.0,
+                                 positive_only=False,
+                                 return_as_tensor=False,
+                                 batchsize=None):
+    """
+    Sample values from a uniform, or normal distribution of given hyper-parameters.
+    These hyper-parameters are to the number of 2 in both uniform and normal cases.
+
+    :param hyperparameter: values of the hyper-parameters. Can either be:
+    1) None, in each case the two hyper-parameters are given by [center-default_range, center+default_range],
+    2) a number, where the two hyper-parameters are given by [centre-hyperparameter, centre+hyperparameter],
+    3) a sequence of length 2, directly defining the two hyper-parameters: [min, max] if the distribution is uniform,
+    [mean, std] if the distribution is normal.
+    4) a numpy array, with size (2, m). In this case, the function returns a 1d array of size m, where each value has
+    been sampled independently with the specified hyper-parameters. If the distribution is uniform, rows correspond to
+    its lower and upper bounds, and if the distribution is normal, rows correspond to its mean and std deviation.
+    5) a numpy array of size (2*n, m). Same as 4) but we first randomly select a block of two rows among the
+    n possibilities.
+    6) the path to a numpy array corresponding to case 4 or 5.
+    7) False, in which case this function returns None.
+    :param size: (optional) number of values to sample. All values are sampled independently.
+    Used only if hyperparameter is not a numpy array.
+    :param distribution: (optional) the distribution type. Can be 'uniform' or 'normal'. Default is 'uniform'.
+    :param centre: (optional) default centre to use if hyperparameter is None or a number.
+    :param default_range: (optional) default range to use if hyperparameter is None.
+    :param positive_only: (optional) wheter to reset all negative values to zero.
+    :return: a float, or a numpy 1d array if size > 1, or hyperparameter is itself a numpy array.
+    Returns None if hyperparmeter is False.
+    """
+    import torch
+    # return False is hyperparameter is False
+    if hyperparameter is False:
+        return None
+
+    # reformat parameter_range
+    hyperparameter = load_array_if_path(hyperparameter, load_as_numpy=True)
+    if not isinstance(hyperparameter, np.ndarray):
+        if hyperparameter is None:
+            hyperparameter = np.array([[centre - default_range] * size, [centre + default_range] * size])
+        elif isinstance(hyperparameter, (int, float)):
+            hyperparameter = np.array([[centre - hyperparameter] * size, [centre + hyperparameter] * size])
+        elif isinstance(hyperparameter, (list, tuple)):
+            assert len(hyperparameter) == 2, 'if list, parameter_range should be of length 2.'
+            hyperparameter = np.transpose(np.tile(np.array(hyperparameter), (size, 1)))
+        else:
+            raise ValueError('parameter_range should either be None, a nummber, a sequence, or a numpy array.')
+    elif isinstance(hyperparameter, np.ndarray):
+        assert hyperparameter.shape[0] % 2 == 0, 'number of rows of parameter_range should be divisible by 2'
+        n_modalities = int(hyperparameter.shape[0] / 2)
+        modality_idx = 2 * np.random.randint(n_modalities)
+        hyperparameter = hyperparameter[modality_idx: modality_idx + 2, :]
+
+    # draw values as tensor
+    if return_as_tensor:
+        # hyperparameter = np.array
+        sample_shape = (hyperparameter.shape[1])
+
+        if batchsize is not None:
+            sample_shape = (batchsize, 1, sample_shape)
+        if distribution == 'uniform':
+
+            parameter_value = torch.distributions.uniform.Uniform(low=hyperparameter[0],
+                                                                  high=hyperparameter[1]).sample(sample_shape)
+        elif distribution == 'normal':
+            parameter_value = torch.normal(size=sample_shape, mean=hyperparameter[0],
+                                           std=hyperparameter[1])
+        else:
+            raise ValueError("Distribution not supported, should be 'uniform' or 'normal'.")
+
+    # draw values as numpy array
+    else:
+        if distribution == 'uniform':
+            parameter_value = np.random.uniform(low=hyperparameter[0, :], high=hyperparameter[1, :])
+        elif distribution == 'normal':
+            parameter_value = np.random.normal(loc=hyperparameter[0, :], scale=hyperparameter[1, :])
+        else:
+            raise ValueError("Distribution not supported, should be 'uniform' or 'normal'.")
+
+    if positive_only:
+        parameter_value[parameter_value < 0] = 0
+
+    return parameter_value
 
 def build_exp(x, first, last, fix_point):
     # first = f(0), last = f(+inf), fix_point = [x0, f(x0))]
