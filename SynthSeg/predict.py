@@ -37,6 +37,7 @@ def predict(path_images,
             path_model,
             segmentation_labels,
             pred_name="aseg.synthseg.mgz",
+            orig_name="brainmask.mgz",
             n_neutral_labels=None,
             path_posteriors=None,
             path_resampled=None,
@@ -134,7 +135,7 @@ def predict(path_images,
     # prepare input/output filepaths
     path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, compute, unique_vol_file = \
         prepare_output_files(path_images, path_segmentations, path_posteriors, path_resampled, path_volumes, recompute,
-                             pred_name)
+                             pred_name, orig_name)
     # get label list
     segmentation_labels, _ = utils.get_list_labels(label_list=segmentation_labels)
     n_labels = len(segmentation_labels)
@@ -264,7 +265,8 @@ def predict(path_images,
                             verbose=verbose)
 
 
-def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, out_volumes, recompute, pred_name="aseg.synthseg.mgz"):
+def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, out_volumes, recompute,
+                         pred_name="aseg.synthseg.mgz", orig_name="brainmask.mgz"):
     '''
     Prepare output files.
     '''
@@ -333,7 +335,7 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
         # input images
         if os.path.isfile(path_images):
             raise Exception('Extension not supported for %s, only use: nii.gz, .nii, .mgz, or .npz' % path_images)
-        path_images = utils.list_images_in_folder(path_images)
+        path_images = utils.list_images_in_folder(path_images, img_name=orig_name)
 
         # segmentations
         assert out_seg[-4:] != '.txt', 'path_segmentations can only be given as text file when path_images is.'

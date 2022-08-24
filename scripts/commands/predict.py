@@ -29,6 +29,8 @@ parser.add_argument("--path_images", type=str, help="path single image or path o
 parser.add_argument("--path_segmentations", type=str, help="segmentations folder/path")
 parser.add_argument("--pred_name", type=str, default="aseg.synthseg.mgz",
                     help="Name with which predictions will be saved. Default=aseg.synthseg.mgz")
+parser.add_argument("--orig_name", type=str, default="brainmask.mgz",
+                    help="Name of input intensity file. Default=brainmask.mgz")
 parser.add_argument("--path_model", type=str, help="model file path")
 parser.add_argument("--segmentation_labels", type=str, help="path label list")
 
