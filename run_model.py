@@ -41,11 +41,12 @@ def create_label_mappings(lut_synth_file, base="/autofs/vast/lzgroup/Projects/Fa
 
 
 if __name__ == "__main__":
+    import os
     # path training label maps
     path_training_label_maps = '/autofs/vast/lzgroup/Users/LeonieHenschel/FastInfantSurfer/data/dataset_split_training.csv'
     label_name = "/dhcp_mapped23_conformed_nn.mgz"
     path_model_dir = '/autofs/vast/lzgroup/Projects/FastInfantSurfer/experiments/SynthSeg_net1/run_dhcp'
-    resume_ckpt = None  # path_model_dir + '/dice_071.h5'
+    resume_ckpt = os.path.join(path_model_dir, 'dice_100.h5')
     batchsize = 1
 
     # architecture parameters
@@ -62,7 +63,7 @@ if __name__ == "__main__":
     lr = 1e-4  # learning rate
     lr_decay = 0  # learning rate decay (knowing that Adam already has its own internal decay)
     wl2_epochs = 1  # number of pre-training epochs with wl2 metric w.r.t. the layer before the softmax
-    dice_epochs = 100  # number of training epochs; for FastSurferCNN = 400k steps, adopt here to same number
+    dice_epochs = 200  # number of training epochs; for FastSurferCNN = 400k steps, adopt here to same number
     steps_per_epoch = 4000  # number of iteration per epoch
 
     # ---------- Generation parameters ----------
