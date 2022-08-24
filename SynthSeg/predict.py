@@ -333,7 +333,7 @@ def prepare_output_files(path_images, out_seg, out_posteriors, out_resampled, ou
     elif ('.nii.gz' not in basename) & ('.nii' not in basename) & ('.mgz' not in basename) & ('.npz' not in basename):
 
         # input images
-        if os.path.isfile(path_images) and basename[:-3] != '.csv':
+        if os.path.isfile(path_images) and path_images[:-3] != '.csv':
             raise Exception('Extension not supported for %s, only use: nii.gz, .nii, .mgz, or .npz' % path_images)
         path_images = utils.list_images_in_folder(path_images, img_name=orig_name)
 
