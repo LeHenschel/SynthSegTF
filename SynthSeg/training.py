@@ -305,7 +305,7 @@ def training(labels_dir,
     input_generator = utils.build_training_generator(brain_generator.model_inputs_generator, batchsize)
 
     # pre-training with weighted L2, input is fit to the softmax rather than the probabilities
-    if wl2_epochs > 0:
+    if wl2_epochs > 0 and checkpoint is None:
         wl2_model = models.Model(unet_model.inputs, [unet_model.get_layer('unet_likelihood').output])
         wl2_model = metrics.metrics_model(wl2_model, segmentation_labels, 'wl2')
         train_model(wl2_model, input_generator, lr, lr_decay, wl2_epochs, steps_per_epoch, model_dir, 'wl2', checkpoint)
